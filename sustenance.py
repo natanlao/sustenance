@@ -78,6 +78,93 @@ def process_group(menu):
 
     return [i for i in menu if i['group'] is not True]
 
+# searches for one or more food items in all dining halls
+def simple_search(menu, food_item):
+    result_string = ''
+    for location in menu:
+        result_string += location['location'] + ':\n'
+        for item in location['menu']:
+            for search_term in food_item:
+                if search_term.lower() in item['name'].lower():
+                    group = item['group'] if item['group'] is not None else ''    
+                    result_string += item['name'] + ' -- ' + item['course'] + \
+                    ', ' + group + ', contains: '
+                    for food_label in item['has']:
+                        result_string += food_label + ' '
+                    result_string += '\n'
+        result_string += '\n'
+    return result_string
+
+def advanced_search(menu, foods='all', locations='all', courses='all', groups='all', restrictions=None):
+
+    # use the parameters to reduce the menu
+    # this is done additively instead of with list comprehension because the fcn's args can be lists
+    # could use sets and is disjoint
+    parsed_menu = []
+
+    if locations is not 'all':
+        for menu_loc in menu:
+            for arg_loc in locations:
+                if arg_loc.lower() in menu_loc['location'].lower():
+                    parsed_menu.append(menu_loc)
+    else:
+        parsed_menu = menu
+    
+    if courses is not 'all':
+        for menu_loc in parsed_menu:
+            new_loc_menu = []
+            for item in menu_loc['menu']:
+                for course in courses:
+                    if course.lower() in item['course'].lower():
+                        new_loc_menu.append(item)
+                        break
+            menu_loc['menu'] = new_loc_menu
+    
+    if groups is not 'all':
+        for menu_loc in parsed_menu:
+            new_loc_menu = []
+            for item in menu_loc['menu']:
+                for group in groups:
+                    if item['group'] is not None and group.lower() in item['group'].lower():
+                        new_loc_menu.append(item)
+                        break
+            menu_loc['menu'] = new_loc_menu
+
+    if foods is not 'all':
+        for menu_loc in parsed_menu:
+            new_loc_menu = []
+            for item in menu_loc['menu']:
+                for food in foods:
+                    if food.lower() in item['name'].lower():
+                        new_loc_menu.append(item)
+                        break
+            menu_loc['menu'] = new_loc_menu
+
+    # restrictions: glutenfree, soy, dairy, nuts
+    if restrictions is not None:
+        for menu_loc in parsed_menu:
+            new_loc_menu = []
+            for item in menu_loc['menu']:
+                for restriction in restrictions:
+                    if restriction.lower() not in [attribute.lower() for attribute in item['has']]:
+                        new_loc_menu.append(item)
+                        break
+            menu_loc['menu'] = new_loc_menu
+    
+    results = ''
+    for location in menu:
+        results += location['location'] + ':\n'
+        for item in location['menu']:
+
+            group = item['group'] if item['group'] is not None else ''    
+            results += item['name'] + ' -- ' + item['course'] + ', ' + group + ', contains: '
+            for food_label in item['has']:
+                results += food_label + ' '
+            results += '\n'
+        results += '\n'
+    
+    return results
+
 
 def main(fname):
     urls = []
@@ -94,9 +181,14 @@ def main(fname):
     for result in results:
         result['menu'] = process_group(result['menu'])
 
+    search_result = advanced_search(results, foods=['raspberry'])
+    print(search_result)
+
     with open(fname, "w") as f:
         json.dump(results, f)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    if len(sys.argv) == 2:
+        main(sys.argv[1])
+    

@@ -28,3 +28,10 @@ The JSON looks something like this:
     ]
 }, ...]
 ```
+
+It is a list of dictionaries, where each dict holds data for a dining hall. Each dining hall dict has the following attributes:
+- location id
+- location name
+- date
+- time
+- menu
