@@ -246,7 +246,7 @@ def advanced_search(menu, foods='all', locations='all', courses='all', groups='a
 def search(fname):
     with open(fname, 'r') as f:
         menu = json.load(f)
-    search_result = advanced_search(menu, foods=['potato'])
+    search_result = advanced_search(menu, foods=['tendies'])
     print('\n')
     print(search_result)
 
