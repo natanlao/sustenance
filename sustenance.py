@@ -250,7 +250,7 @@ def search(fname):
     print('\n')
     print(search_result)
 
-search('test')
+#search('test')
 
 
 def main(fname):
