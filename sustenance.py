@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+#
+# Authors: Natan Lao, Eli Pandolfo
+# crawl UCSC dining hall menus, search current menu items,
+# collect and analyze data over time
+
 from bs4 import BeautifulSoup
 from datetime import datetime
 import json
@@ -8,6 +13,7 @@ import requests
 import sys
 import time
 import urllib.parse
+import numpy as np
 
 BASE_URL = "http://nutrition.sa.ucsc.edu/menuSamp.asp?locationNum={location_id}&locationName={location}&sName=&naFlag="
 
@@ -95,6 +101,57 @@ def simple_search(menu, food_item):
         result_string += '\n'
     return result_string
 
+def equals(s, t):
+    if s == t:
+        return 0
+    else:
+        return 1
+
+# sequence alignment algorithm for autocorrecting search queries
+# mismatch incurs cost of 1, gap incurs cost of 1
+def match(search, target):
+    m = 2
+    g = 1.5
+    min_diff = 999999
+
+    if search == '9':
+        search = 'nine'
+    if search == '10':
+        search == 'ten'
+
+    search = search.lower()
+    target = target.lower()
+        
+    A = np.empty([len(search) + 1, len(target) + 1])
+    
+    for i in range(len(search) + 1):
+        A[i, 0] = i * g
+    for j in range(len(target) + 1):
+        A[0, j] = j * g
+    
+    # matrix uses i, strings use i-1
+    for i in range(1, len(search) + 1):
+        for j in range(1, len(target) + 1):
+            s = search[i - 1]
+            t = target[j - 1]
+
+            A[i, j] = min(
+                m * equals(s, t) + A[i - 1, j - 1],
+                g + A[i - 1, j],
+                g + A[i, j - 1])
+    
+    # if A[len(search), len(target)] <= 10:
+    #     print('search: ' + search + '\ttarget ' +  target + '\tdiff: ' + str(A[len(search), len(target)]))
+    
+    if A[len(search), len(target)] < min_diff:
+        min_diff = A[len(search), len(target)]
+
+    if min_diff < 4:
+        return True
+    else:
+        return False
+            
+
 def advanced_search(menu, foods='all', locations='all', courses='all', groups='all', restrictions=None):
 
     # use the parameters to reduce the menu
@@ -105,8 +162,9 @@ def advanced_search(menu, foods='all', locations='all', courses='all', groups='a
     if locations is not 'all':
         for menu_loc in menu:
             for arg_loc in locations:
-                if arg_loc.lower() in menu_loc['location'].lower():
-                    parsed_menu.append(menu_loc)
+                for word in menu_loc['location'].split(' '):
+                    if match(arg_loc, word) == True:
+                        parsed_menu.append(menu_loc)
     else:
         parsed_menu = menu
     
@@ -115,9 +173,16 @@ def advanced_search(menu, foods='all', locations='all', courses='all', groups='a
             new_loc_menu = []
             for item in menu_loc['menu']:
                 for course in courses:
-                    if course.lower() in item['course'].lower():
+                    # try and match with the phrase and each word in the phrase.
+                    # eg, 'night' will return 'Late Night'
+                    if match(course, item['course']) == True:
                         new_loc_menu.append(item)
                         break
+                    for word in item['course'].split(' '):
+                        if match(course, word) == True:
+                            new_loc_menu.append(item)
+                            break
+
             menu_loc['menu'] = new_loc_menu
     
     if groups is not 'all':
@@ -125,9 +190,15 @@ def advanced_search(menu, foods='all', locations='all', courses='all', groups='a
             new_loc_menu = []
             for item in menu_loc['menu']:
                 for group in groups:
-                    if item['group'] is not None and group.lower() in item['group'].lower():
-                        new_loc_menu.append(item)
-                        break
+                    if item['group'] is not None:
+                        if match(group, item['group']) == True:
+                            new_loc_menu.append(item)
+                            break
+                        for word in item['group'].split(' '):
+                            if match(group, word) == True:
+                                new_loc_menu.append(item)
+                                break
+
             menu_loc['menu'] = new_loc_menu
 
     if foods is not 'all':
@@ -135,9 +206,14 @@ def advanced_search(menu, foods='all', locations='all', courses='all', groups='a
             new_loc_menu = []
             for item in menu_loc['menu']:
                 for food in foods:
-                    if food.lower() in item['name'].lower():
+                    if match(food, item['name']):
                         new_loc_menu.append(item)
                         break
+                    for word in item['name'].split(' '):
+                        if match(food, word) == True:
+                            new_loc_menu.append(item)
+                            break
+
             menu_loc['menu'] = new_loc_menu
 
     # restrictions: glutenfree, soy, dairy, nuts
@@ -146,24 +222,35 @@ def advanced_search(menu, foods='all', locations='all', courses='all', groups='a
             new_loc_menu = []
             for item in menu_loc['menu']:
                 for restriction in restrictions:
-                    if restriction.lower() not in [attribute.lower() for attribute in item['has']]:
-                        new_loc_menu.append(item)
-                        break
+                    for attribute in item['has']:
+                        if match(restriction, attribute) == False:
+                            new_loc_menu.append(item)
+                            break
+
             menu_loc['menu'] = new_loc_menu
     
     results = ''
-    for location in menu:
+    for location in parsed_menu:
         results += location['location'] + ':\n'
         for item in location['menu']:
 
             group = item['group'] if item['group'] is not None else ''    
-            results += item['name'] + ' -- ' + item['course'] + ', ' + group + ', contains: '
+            results += '\t' + item['name'] + ' -- ' + item['course'] + ', ' + group + ', contains: '
             for food_label in item['has']:
                 results += food_label + ' '
             results += '\n'
         results += '\n'
     
     return results
+
+def search(fname):
+    with open(fname, 'r') as f:
+        menu = json.load(f)
+    search_result = advanced_search(menu, foods=['potato'])
+    print('\n')
+    print(search_result)
+
+search('test')
 
 
 def main(fname):
@@ -181,9 +268,6 @@ def main(fname):
     for result in results:
         result['menu'] = process_group(result['menu'])
 
-    search_result = advanced_search(results, foods=['raspberry'])
-    print(search_result)
-
     with open(fname, "w") as f:
         json.dump(results, f)
 
@@ -191,4 +275,16 @@ def main(fname):
 if __name__ == "__main__":
     if len(sys.argv) == 2:
         main(sys.argv[1])
+    
+
+
+
+
+
+
+
+
+
+
+
     
